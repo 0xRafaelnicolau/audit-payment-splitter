@@ -3,6 +3,7 @@ pragma solidity 0.8.19;
 
 import {Test, console2} from "../lib/forge-std/src/Test.sol";
 import {Audits} from "../src/Audits.sol";
+
 interface IUSDC {
     function balanceOf(address account) external view returns (uint256);
     function mint(address to, uint256 amount) external;
@@ -17,14 +18,14 @@ contract AuditsTest is Test {
 
     address public provider;
     address public client;
-    
+
     function setUp() public {
         provider = address(100);
         client = address(200);
         usdc = IUSDC(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
 
         vm.label(provider, "provider");
-        vm.label(client, "client"); 
+        vm.label(client, "client");
         vm.label(address(usdc), "USDC");
 
         vm.prank(provider);
@@ -37,9 +38,9 @@ contract AuditsTest is Test {
         assertEq(usdc.balanceOf(client), 60000e6);
     }
 
-    function testProposeAudit() public {
+    function testProvideAudit() public {
         vm.prank(provider);
-        uint256 auditId = audits.proposeAudit(client, address(usdc), 60000e6, 6);
+        uint256 auditId = audits.provideAudit(client, address(usdc), 60000e6, 6);
         assertEq(auditId, 1);
 
         Audits.Audit memory audit = audits.getAudit(auditId);
@@ -54,7 +55,7 @@ contract AuditsTest is Test {
     }
 
     function testApproveAudit() public {
-        testProposeAudit();
+        testProvideAudit();
 
         vm.startPrank(client);
         usdc.approve(address(audits), 60000e6);
@@ -64,5 +65,34 @@ contract AuditsTest is Test {
         Audits.Audit memory audit = audits.getAudit(1);
         assertEq(audit.confirmed, true);
         assertEq(usdc.balanceOf(address(audits)), 60000e6);
+    }
+
+    function testApproveAuditTwice() public {
+        testApproveAudit();
+
+        vm.startPrank(client);
+        vm.expectRevert(Audits.AuditAlreadyConfirmed.selector);
+        audits.approveAudit(1);
+        vm.stopPrank();
+    }
+
+    function testSubmitPhase() public {
+        testApproveAudit();
+
+        vm.prank(provider);
+        audits.submitPhase(1);
+
+        Audits.Phase memory phase = audits.getAuditPhase(1);
+        assertEq(phase.submitted, true);
+        assertEq(phase.confirmed, false);
+    }
+
+    function testSubmitPhaseTwice() public {
+        testSubmitPhase();
+
+        vm.startPrank(provider);
+        vm.expectRevert(Audits.PhaseAlreadySubmitted.selector);
+        audits.submitPhase(1);
+        vm.stopPrank();
     }
 }

@@ -1,6 +1,6 @@
-## Audits payment stream
+## Audit Payment Stream
 
-**Allows payments to be split accross multiple phases of an audit**. 
+**Allows for payments to be split across multiple phases of an audit.**. 
 
 ## Usage
 
@@ -15,7 +15,7 @@ $ forge build
 $ ETH_RPC_URL="URL";
 ```
 
-### Run the tests
+### Run tests
 ```shell
 $ forge test --fork-url $ETH_RPC_URL
 ```

@@ -47,7 +47,7 @@ contract Audits is Ownable {
                                         EVENTS
     //////////////////////////////////////////////////////////////////////////*/
 
-    event AuditProposed(uint256 auditId);
+    event AuditProvided(uint256 auditId);
     event AuditApproved(uint256 auditId);
     event AuditCanceled(uint256 auditId);
     event AuditFinished(uint256 auditId);
@@ -75,7 +75,7 @@ contract Audits is Ownable {
                                 PUBLIC/EXTERNAL FUNCTIONS
     //////////////////////////////////////////////////////////////////////////*/
 
-    function proposeAudit(address client, address token, uint256 amount, uint256 totalPhases)
+    function provideAudit(address client, address token, uint256 amount, uint256 totalPhases)
         external
         onlyOwner
         returns (uint256)
@@ -91,7 +91,7 @@ contract Audits is Ownable {
         _currentAuditId++;
         audits[_currentAuditId] = audit;
 
-        emit AuditProposed(_currentAuditId);
+        emit AuditProvided(_currentAuditId);
 
         return _currentAuditId;
     }
@@ -173,5 +173,10 @@ contract Audits is Ownable {
 
     function getAudit(uint256 auditId) external view returns (Audit memory) {
         return audits[auditId];
+    }
+
+    function getAuditPhase(uint256 auditId) external view returns (Phase memory) {
+        Audit memory audit = audits[auditId];
+        return phases[auditId][audit.currentPhase];
     }
 }
