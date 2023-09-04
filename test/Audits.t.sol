@@ -54,6 +54,15 @@ contract AuditsTest is Test {
         assertEq(audit.finished, false);
     }
 
+    function testCancelAuditBeforeApproval() public {
+        testProvideAudit();
+
+        vm.startPrank(client);
+        vm.expectRevert(Audits.AuditNotYetConfirmed.selector);
+        audits.cancelAudit(1);
+        vm.stopPrank();
+    }
+
     function testApproveAudit() public {
         testProvideAudit();
 
@@ -65,6 +74,18 @@ contract AuditsTest is Test {
         Audits.Audit memory audit = audits.getAudit(1);
         assertEq(audit.confirmed, true);
         assertEq(usdc.balanceOf(address(audits)), 60000e6);
+    }
+
+    function testCancelAuditAfterApproval() public {
+        testApproveAudit();
+
+        vm.prank(client);
+        audits.cancelAudit(1);
+
+        Audits.Audit memory audit = audits.getAudit(1);
+        assertEq(audit.finished, true);
+        assertEq(audit.amount, 0);
+        assertEq(usdc.balanceOf(client), 60000e6);
     }
 
     function testApproveAuditTwice() public {
@@ -82,7 +103,7 @@ contract AuditsTest is Test {
         vm.prank(provider);
         audits.submitPhase(1);
 
-        Audits.Phase memory phase = audits.getAuditPhase(1);
+        Audits.Phase memory phase = audits.getAuditPhase(1, 0);
         assertEq(phase.submitted, true);
         assertEq(phase.confirmed, false);
     }
@@ -94,5 +115,21 @@ contract AuditsTest is Test {
         vm.expectRevert(Audits.PhaseAlreadySubmitted.selector);
         audits.submitPhase(1);
         vm.stopPrank();
+    }
+
+    function testApprovePhase() public {
+        testSubmitPhase();
+
+        vm.prank(client);
+        audits.approvePhase(1);
+
+        Audits.Phase memory phase = audits.getAuditPhase(1, 0);
+        assertEq(phase.submitted, true);
+        assertEq(phase.confirmed, true);
+
+        Audits.Audit memory audit = audits.getAudit(1);
+        assertEq(audit.currentPhase, 1);
+        assertEq(audit.amount, 50000e6); 
+        assertEq(usdc.balanceOf(provider), 10000e6);
     }
 }

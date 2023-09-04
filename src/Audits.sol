@@ -175,8 +175,8 @@ contract Audits is Ownable {
         return audits[auditId];
     }
 
-    function getAuditPhase(uint256 auditId) external view returns (Phase memory) {
-        Audit memory audit = audits[auditId];
-        return phases[auditId][audit.currentPhase];
+    function getAuditPhase(uint256 auditId, uint256 phase) external view returns (Phase memory) {
+        if (phase >= audits[auditId].totalPhases) revert ExceededMaxPhases();
+        return phases[auditId][phase];
     }
 }
