@@ -5,7 +5,7 @@ import {Ownable} from "../lib/openzeppelin-contracts/contracts/access/Ownable.so
 import {IERC20} from "../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "../lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 
-contract Audits is Ownable {
+contract Splitter is Ownable {
     using SafeERC20 for IERC20;
 
     /*//////////////////////////////////////////////////////////////////////////
@@ -85,7 +85,7 @@ contract Audits is Ownable {
         if (amount == 0) revert ZeroAmount();
         if (totalPhases > _maxPhases) revert ExceededMaxPhases();
 
-        uint256 amountPerPhase = amount / totalPhases;
+        uint256 amountPerPhase = amount / (totalPhases + 1);
         Audit memory audit = Audit(client, token, amount, amountPerPhase, totalPhases, 0, false, false);
 
         _currentAuditId++;
@@ -99,12 +99,14 @@ contract Audits is Ownable {
     function approveAudit(uint256 auditId) external {
         Audit storage audit = audits[auditId];
 
-        if (msg.sender != audit.client) revert AuditInvalidClient();
+        if (audit.client != msg.sender) revert AuditInvalidClient();
         if (audit.confirmed == true) revert AuditAlreadyConfirmed();
 
         audit.confirmed = true;
+        audit.amount -= audit.amountPerPhase;
 
         IERC20(audit.token).safeTransferFrom(audit.client, address(this), audit.amount);
+        IERC20(audit.token).safeTransferFrom(audit.client, owner(), audit.amountPerPhase);
 
         emit AuditApproved(auditId);
     }
@@ -130,6 +132,7 @@ contract Audits is Ownable {
         Audit memory audit = audits[auditId];
         Phase storage phase = phases[auditId][audit.currentPhase];
 
+        if (audit.finished == true) revert AuditAlreadyFinished();
         if (phase.confirmed == true) revert PhaseAlreadyConfirmed();
         if (phase.submitted == true) revert PhaseAlreadySubmitted();
 
