@@ -79,6 +79,34 @@ contract SplitterTest is Test {
         assertEq(usdc.balanceOf(provider), 10000e6);
     }
 
+    function testRejectAudit() public {
+        testProvideAudit();
+
+        vm.prank(client);
+        splitter.rejectAudit(1);
+
+        Splitter.Audit memory audit = splitter.getAudit(1);
+        assertEq(audit.client, address(0));
+    }
+
+    function testRejectAlreadyApprovedAudit() public {
+        testApproveAudit();
+
+        vm.startPrank(client);
+        vm.expectRevert(Splitter.AuditAlreadyConfirmed.selector);
+        splitter.rejectAudit(1);
+        vm.stopPrank();
+    }
+
+    function testRejectAuditTwice() public {
+        testRejectAudit();
+
+        vm.startPrank(client);
+        vm.expectRevert(Splitter.AuditAlreadyRejected.selector);
+        splitter.rejectAudit(1);
+        vm.stopPrank();
+    }
+
     function testCancelAuditAfterApproval() public {
         testApproveAudit();
 

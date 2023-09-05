@@ -37,6 +37,7 @@ contract Splitter is Ownable {
     error ExceededMaxPhases();
     error AuditInvalidClient();
     error AuditAlreadyConfirmed();
+    error AuditAlreadyRejected();
     error AuditNotYetConfirmed();
     error AuditAlreadyFinished();
     error PhaseAlreadyConfirmed();
@@ -49,6 +50,7 @@ contract Splitter is Ownable {
 
     event AuditProvided(uint256 auditId);
     event AuditApproved(uint256 auditId);
+    event AuditRejected(uint256 auditId);
     event AuditCanceled(uint256 auditId);
     event AuditFinished(uint256 auditId);
     event PhaseSubmitted(uint256 auditId, uint256 phase);
@@ -109,6 +111,18 @@ contract Splitter is Ownable {
         IERC20(audit.token).safeTransferFrom(audit.client, owner(), audit.amountPerPhase);
 
         emit AuditApproved(auditId);
+    }
+
+    function rejectAudit(uint256 auditId) external {
+        Audit memory audit = audits[auditId];
+
+        if (audit.client == address(0)) revert AuditAlreadyRejected();
+        if (audit.client != msg.sender) revert AuditInvalidClient();
+        if (audit.confirmed == true) revert AuditAlreadyConfirmed();
+
+        delete audits[auditId];
+
+        emit AuditRejected(auditId);
     }
 
     function cancelAudit(uint256 auditId) external {
