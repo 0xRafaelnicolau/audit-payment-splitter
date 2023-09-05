@@ -21,6 +21,6 @@ $ forge test --fork-url $ETH_RPC_URL
 ```
 
 ### TODO
-* Generalize the provider role so that anyone can provide an audit.
-* Think of a better way to divide payments accross different phases of an audit.
+* Use access control instead of ownable
+* Think of a better way to divide payments accross different phases in regards to indexes.
 * Allow different phases to have different prices.

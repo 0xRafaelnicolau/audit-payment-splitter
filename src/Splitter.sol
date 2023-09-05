@@ -62,7 +62,7 @@ contract Splitter is Ownable {
 
     // @notice audit id => Audit.
     mapping(uint256 => Audit) public audits;
-    // @notice audit id => phase => confirmed or not confirmed
+    // @notice audit id => phase id => Phase
     mapping(uint256 => mapping(uint256 => Phase)) public phases;
     // @notice current audit id.
     uint256 private _currentAuditId;
