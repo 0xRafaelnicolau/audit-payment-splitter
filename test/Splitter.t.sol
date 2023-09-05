@@ -182,6 +182,7 @@ contract SplitterTest is Test {
         _submitAndApprovePhase(4);
         _submitAndApprovePhase(5);
         _submitAndApprovePhase(6);
+
         assertEq(splitter.getAudit(1).finished, true);
         assertEq(usdc.balanceOf(address(splitter)), 0);
         assertEq(usdc.balanceOf(provider), 70000e6);
@@ -207,9 +208,9 @@ contract SplitterTest is Test {
 
     function _submitAndApprovePhase(uint256 phase) private {
         vm.prank(provider);
-        splitter.submitPhase(1); 
+        splitter.submitPhase(1);
         vm.prank(client);
-        splitter.approvePhase(1); 
+        splitter.approvePhase(1);
         assertEq(splitter.getAudit(1).currentPhase, phase);
     }
 }
