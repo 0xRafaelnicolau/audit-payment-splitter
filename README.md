@@ -19,7 +19,3 @@ $ ETH_RPC_URL="URL";
 ```shell
 $ forge test --fork-url $ETH_RPC_URL
 ```
-
-### TODO
-* Have a different role for the admin and for different team proposer.
-* Create an allowlist of tokens.

@@ -39,14 +39,18 @@ contract Refactor is AccessControl {
     error PhaseWithZeroPrice();
     error AuditInvalidClient();
     error AuditAlreadyAccepted();
+    error AuditAlreadyFinished();
+    error AuditNotYetAccepted();
+    error PricesNotUpdatedToZero();
 
     /*//////////////////////////////////////////////////////////////////////////
                                     EVENTS
     //////////////////////////////////////////////////////////////////////////*/
 
-    event AuditProposed(uint256 auditId, address client);
-    event AuditAccepted(uint256 auditId, address client);
-    event AuditRejected(uint256 auditId, address client);
+    event AuditProposed(uint256 auditId, address client, address proposer);
+    event AuditAccepted(uint256 auditId, address client, address proposer);
+    event AuditRejected(uint256 auditId, address client, address proposer);
+    event AuditCanceled(uint256 auditid, address client, address proposer);
 
     /*//////////////////////////////////////////////////////////////////////////
                                     STORAGE
@@ -97,10 +101,10 @@ contract Refactor is AccessControl {
         if (token == address(0)) revert AddressZero();
 
         _auditId += 1;
-        uint256 totalPrice = _updatePhasePrices(phasePrices, totalPhases);
+        uint256 totalPrice = _updatePhasePrices(_auditId, phasePrices, totalPhases);
         audits[_auditId] = Audit(client, msg.sender, token, totalPrice, totalPhases, 0, false, false);
 
-        emit AuditProposed(_auditId, client);
+        emit AuditProposed(_auditId, client, msg.sender);
 
         return _auditId;
     }
@@ -114,10 +118,38 @@ contract Refactor is AccessControl {
 
         IERC20(audits[auditId].token).safeTransferFrom(audit.client, address(this), audit.price);
 
-        emit AuditAccepted(auditId, audit.client);
+        emit AuditAccepted(auditId, audit.client, audit.proposer);
     }
 
-    function rejectAudit(uint256 auditId) external {}
+    function rejectAudit(uint256 auditId) external {
+        Audit memory audit = audits[auditId];
+        if (audit.client != msg.sender) revert AuditInvalidClient();
+        if (audit.finished == true) revert AuditAlreadyFinished();
+        if (audit.accepted == true) revert AuditAlreadyAccepted();
+
+        audits[auditId].finished = true;
+
+        emit AuditRejected(auditId, audit.client, audit.proposer);
+    }
+
+    function cancelAudit(uint256 auditId) external {
+        Audit memory audit = audits[auditId];
+        if (audit.client != msg.sender) revert AuditInvalidClient();
+        if (audit.accepted == false) revert AuditNotYetAccepted();
+        if (audit.finished == true) revert AuditAlreadyFinished();
+
+        uint256 amountToWithdraw = audit.price;
+
+        audits[auditId].finished = true;
+        audits[auditId].price = 0;
+
+        uint256[] memory emptyPrices = new uint256[](audit.totalPhases);
+        if (_updatePhasePrices(auditId, emptyPrices, audit.totalPhases) != 0) revert PricesNotUpdatedToZero();
+
+        IERC20(audit.token).safeTransfer(audit.client, amountToWithdraw);
+
+        emit AuditCanceled(auditId, audit.client, audit.proposer);
+    }
 
     function submitPhase(uint256 auditId) external onlyRole(PROPOSER_ROLE) {}
 
@@ -127,12 +159,15 @@ contract Refactor is AccessControl {
                                     PRIVATE/INTERNAL
     //////////////////////////////////////////////////////////////////////////*/
 
-    function _updatePhasePrices(uint256[] calldata phasePrices, uint256 totalPhases) private returns (uint256) {
+    function _updatePhasePrices(uint256 auditId, uint256[] memory phasePrices, uint256 totalPhases)
+        private
+        returns (uint256)
+    {
         uint256 totalPrice;
         for (uint256 i; i < totalPhases; ++i) {
             if (phasePrices[i] == 0) revert PhaseWithZeroPrice();
             totalPrice += phasePrices[i];
-            phases[_auditId][i].price = phasePrices[i];
+            phases[auditId][i].price = phasePrices[i];
         }
         return totalPrice;
     }
