@@ -155,6 +155,7 @@ contract Refactor is AccessControl {
     function submitPhase(uint256 auditId) external onlyRole(PROPOSER_ROLE) {
         Audit memory audit = audits[auditId];
         Phase memory currPhase = phases[auditId][audit.currentPhase];
+        if (audit.proposer != msg.sender) revert AuditInvalidProposer();
         if (audit.finished == true) revert AuditAlreadyFinished();
         if (currPhase.submitted == true) revert PhaseAlreadySubmitted();
         if (currPhase.confirmed == true) revert PhaseAlreadyConfirmed();
