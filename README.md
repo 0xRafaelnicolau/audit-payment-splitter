@@ -21,6 +21,5 @@ $ forge test --fork-url $ETH_RPC_URL
 ```
 
 ### TODO
-* Use access control instead of ownable
-* Think of a better way to divide payments accross different phases in regards to indexes.
-* Allow different phases to have different prices.
+* Have a different role for the admin and for different team proposer.
+* Create an allowlist of tokens.
