@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.19;
 
-import {Ownable} from "../lib/openzeppelin-contracts/contracts/access/Ownable.sol";
+import {AccessControl} from "../lib/openzeppelin-contracts/contracts/access/AccessControl.sol";
 import {IERC20} from "../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "../lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 
-contract Splitter is Ownable {
+contract Splitter is AccessControl {
     using SafeERC20 for IERC20;
 
     /*//////////////////////////////////////////////////////////////////////////
@@ -14,186 +14,217 @@ contract Splitter is Ownable {
 
     struct Audit {
         address client;
+        address proposer;
         address token;
-        uint256 amount;
-        uint256 amountPerPhase;
+        uint256 price;
         uint256 totalPhases;
         uint256 currentPhase;
-        bool confirmed;
+        bool accepted;
         bool finished;
     }
 
     struct Phase {
+        uint256 price;
         bool submitted;
         bool confirmed;
     }
 
     /*//////////////////////////////////////////////////////////////////////////
-                                        ERRORS
+                                    ERRORS
     //////////////////////////////////////////////////////////////////////////*/
 
+    error LengthDoesNotMatchPhases();
+    error TotalPhasesIsZero();
     error AddressZero();
-    error ZeroAmount();
-    error ExceededMaxPhases();
+    error PhaseWithZeroPrice();
     error AuditInvalidClient();
-    error AuditAlreadyConfirmed();
-    error AuditAlreadyRejected();
-    error AuditNotYetConfirmed();
+    error AuditAlreadyAccepted();
     error AuditAlreadyFinished();
-    error PhaseAlreadyConfirmed();
+    error AuditNotYetAccepted();
+    error AuditInvalidProposer();
     error PhaseAlreadySubmitted();
+    error PhaseAlreadyConfirmed();
     error PhaseNotYetSubmitted();
 
     /*//////////////////////////////////////////////////////////////////////////
-                                        EVENTS
+                                    EVENTS
     //////////////////////////////////////////////////////////////////////////*/
 
-    event AuditProvided(uint256 auditId);
-    event AuditApproved(uint256 auditId);
-    event AuditRejected(uint256 auditId);
-    event AuditCanceled(uint256 auditId);
-    event AuditFinished(uint256 auditId);
-    event PhaseSubmitted(uint256 auditId, uint256 phase);
-    event PhaseApproved(uint256 auditId, uint256 phase);
+    event AuditProposed(uint256 indexed auditId, address client, address proposer);
+    event AuditAccepted(uint256 indexed auditId, address client, address proposer);
+    event AuditRejected(uint256 indexed auditId, address client, address proposer);
+    event AuditCanceled(uint256 indexed auditId, address client, address proposer);
+    event AuditFinished(uint256 indexed auditId, address client, address proposer);
+    event PhaseApproved(uint256 indexed auditId, uint256 indexed phase, address client, address proposer);
+    event PhaseSubmitted(uint256 indexed auditId, uint256 indexed phase, address client, address proposer);
 
     /*//////////////////////////////////////////////////////////////////////////
-                                        STORAGE
+                                    STORAGE
     //////////////////////////////////////////////////////////////////////////*/
 
-    // @notice audit id => Audit.
+    bytes32 public constant COVERAGE_ROLE = keccak256("COVERAGE_ROLE");
+    bytes32 public constant PROPOSER_ROLE = keccak256("PROPOSER_ROLE");
     mapping(uint256 => Audit) public audits;
-    // @notice audit id => phase id => Phase
     mapping(uint256 => mapping(uint256 => Phase)) public phases;
-    // @notice current audit id.
-    uint256 private _currentAuditId;
-    // @notice max phases allowed per audit.
-    uint256 private _maxPhases;
 
-    constructor(uint256 maxPhases) {
-        _maxPhases = maxPhases;
+    address private _coverage;
+    uint256 private _auditId;
+
+    /*//////////////////////////////////////////////////////////////////////////
+                                    CONSTRUCTOR
+    //////////////////////////////////////////////////////////////////////////*/
+    constructor() {
+        _grantRole(COVERAGE_ROLE, msg.sender);
+        _coverage = msg.sender;
     }
 
     /*//////////////////////////////////////////////////////////////////////////
-                                PUBLIC/EXTERNAL FUNCTIONS
+                                    COVERAGE FUNCTIONS
     //////////////////////////////////////////////////////////////////////////*/
 
-    function provideAudit(address client, address token, uint256 amount, uint256 totalPhases)
+    function addProposer(address proposer) external onlyRole(COVERAGE_ROLE) {
+        if (proposer == address(0)) revert AddressZero();
+        _grantRole(PROPOSER_ROLE, proposer);
+    }
+
+    function removeProposer(address proposer) external onlyRole(COVERAGE_ROLE) {
+        if (proposer == address(0)) revert AddressZero();
+        _revokeRole(PROPOSER_ROLE, proposer);
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+                                    PUBLIC / EXTERNAL
+    //////////////////////////////////////////////////////////////////////////*/
+
+    function proposeAudit(address client, address token, uint256[] calldata phasePrices, uint256 totalPhases)
         external
-        onlyOwner
+        onlyRole(PROPOSER_ROLE)
         returns (uint256)
     {
+        if (phasePrices.length != totalPhases) revert LengthDoesNotMatchPhases();
+        if (totalPhases == 0) revert TotalPhasesIsZero();
         if (client == address(0)) revert AddressZero();
         if (token == address(0)) revert AddressZero();
-        if (amount == 0) revert ZeroAmount();
-        if (totalPhases > _maxPhases) revert ExceededMaxPhases();
 
-        uint256 amountPerPhase = amount / (totalPhases + 1);
-        Audit memory audit = Audit(client, token, amount, amountPerPhase, totalPhases, 0, false, false);
+        _auditId += 1;
+        uint256 totalPrice = _updatePhasePrices(_auditId, phasePrices, totalPhases);
+        audits[_auditId] = Audit(client, msg.sender, token, totalPrice, totalPhases, 0, false, false);
 
-        _currentAuditId++;
-        audits[_currentAuditId] = audit;
+        emit AuditProposed(_auditId, client, msg.sender);
 
-        emit AuditProvided(_currentAuditId);
-
-        return _currentAuditId;
+        return _auditId;
     }
 
-    function approveAudit(uint256 auditId) external {
-        Audit storage audit = audits[auditId];
-
+    function acceptAudit(uint256 auditId) external {
+        Audit memory audit = audits[auditId];
         if (audit.client != msg.sender) revert AuditInvalidClient();
-        if (audit.confirmed == true) revert AuditAlreadyConfirmed();
+        if (audit.accepted == true) revert AuditAlreadyAccepted();
 
-        audit.confirmed = true;
-        audit.amount -= audit.amountPerPhase;
+        audits[auditId].accepted = true;
 
-        IERC20(audit.token).safeTransferFrom(audit.client, address(this), audit.amount);
-        IERC20(audit.token).safeTransferFrom(audit.client, owner(), audit.amountPerPhase);
+        IERC20(audits[auditId].token).safeTransferFrom(audit.client, address(this), audit.price);
 
-        emit AuditApproved(auditId);
+        emit AuditAccepted(auditId, audit.client, audit.proposer);
     }
 
     function rejectAudit(uint256 auditId) external {
         Audit memory audit = audits[auditId];
-
-        if (audit.client == address(0)) revert AuditAlreadyRejected();
         if (audit.client != msg.sender) revert AuditInvalidClient();
-        if (audit.confirmed == true) revert AuditAlreadyConfirmed();
+        if (audit.finished == true) revert AuditAlreadyFinished();
+        if (audit.accepted == true) revert AuditAlreadyAccepted();
 
-        delete audits[auditId];
+        audits[auditId].finished = true;
 
-        emit AuditRejected(auditId);
+        emit AuditRejected(auditId, audit.client, audit.proposer);
     }
 
     function cancelAudit(uint256 auditId) external {
-        Audit storage audit = audits[auditId];
-
-        if (msg.sender != audit.client) revert AuditInvalidClient();
-        if (audit.confirmed == false) revert AuditNotYetConfirmed();
+        Audit memory audit = audits[auditId];
+        if (audit.client != msg.sender) revert AuditInvalidClient();
+        if (audit.accepted == false) revert AuditNotYetAccepted();
         if (audit.finished == true) revert AuditAlreadyFinished();
 
-        uint256 amount = audit.amount;
+        uint256 amountToWithdraw = audit.price;
 
-        audit.finished = true;
-        audit.amount = 0;
+        audits[auditId].finished = true;
+        audits[auditId].price = 0;
 
-        IERC20(audit.token).safeTransfer(audit.client, amount);
+        IERC20(audit.token).safeTransfer(audit.client, amountToWithdraw);
 
-        emit AuditCanceled(auditId);
+        emit AuditCanceled(auditId, audit.client, audit.proposer);
     }
 
-    function submitPhase(uint256 auditId) external onlyOwner {
+    function submitPhase(uint256 auditId) external onlyRole(PROPOSER_ROLE) {
         Audit memory audit = audits[auditId];
-        Phase storage phase = phases[auditId][audit.currentPhase];
-
+        Phase memory currPhase = phases[auditId][audit.currentPhase];
+        if (audit.proposer != msg.sender) revert AuditInvalidProposer();
         if (audit.finished == true) revert AuditAlreadyFinished();
-        if (phase.confirmed == true) revert PhaseAlreadyConfirmed();
-        if (phase.submitted == true) revert PhaseAlreadySubmitted();
+        if (currPhase.submitted == true) revert PhaseAlreadySubmitted();
+        if (currPhase.confirmed == true) revert PhaseAlreadyConfirmed();
 
-        phase.submitted = true;
+        currPhase.submitted = true;
 
-        emit PhaseSubmitted(auditId, audit.currentPhase);
+        emit PhaseSubmitted(auditId, audit.currentPhase, audit.client, audit.proposer);
     }
 
     function approvePhase(uint256 auditId) external {
         Audit storage audit = audits[auditId];
         Phase storage phase = phases[auditId][audit.currentPhase];
-
-        if (msg.sender != audit.client) revert AuditInvalidClient();
+        if (audit.client != msg.sender) revert AuditInvalidClient();
         if (audit.finished == true) revert AuditAlreadyFinished();
         if (phase.submitted == false) revert PhaseNotYetSubmitted();
         if (phase.confirmed == true) revert PhaseAlreadyConfirmed();
 
-        uint256 phaseBefore = audit.currentPhase;
+        uint256 approvedPhase = audit.currentPhase;
 
         phase.confirmed = true;
         audit.currentPhase += 1;
-        audit.amount -= audit.amountPerPhase;
+        audit.price -= phase.price;
 
         if (audit.currentPhase == audit.totalPhases) {
             audit.finished = true;
-            emit AuditFinished(auditId);
+            emit AuditFinished(auditId, audit.client, audit.proposer);
         }
 
-        IERC20(audit.token).safeTransfer(owner(), audit.amountPerPhase);
+        IERC20(audit.token).safeTransfer(_coverage, phase.price);
 
-        emit PhaseApproved(auditId, phaseBefore);
+        emit PhaseApproved(auditId, approvedPhase, audit.client, audit.proposer);
     }
 
     /*//////////////////////////////////////////////////////////////////////////
-                                GETTERS / SETTERS
+                                    PRIVATE / INTERNAL
     //////////////////////////////////////////////////////////////////////////*/
 
-    function setMaxPhases(uint256 maxPhases) external onlyOwner {
-        _maxPhases = maxPhases;
+    function _updatePhasePrices(uint256 auditId, uint256[] memory phasePrices, uint256 totalPhases)
+        private
+        returns (uint256)
+    {
+        uint256 totalPrice;
+        for (uint256 i; i < totalPhases; ++i) {
+            if (phasePrices[i] == 0) revert PhaseWithZeroPrice();
+            totalPrice += phasePrices[i];
+            phases[auditId][i].price = phasePrices[i];
+        }
+        return totalPrice;
     }
+
+    /*//////////////////////////////////////////////////////////////////////////
+                                    GETTERS / SETTERS
+    //////////////////////////////////////////////////////////////////////////*/
 
     function getAudit(uint256 auditId) external view returns (Audit memory) {
         return audits[auditId];
     }
 
     function getAuditPhase(uint256 auditId, uint256 phase) external view returns (Phase memory) {
-        if (phase >= audits[auditId].totalPhases) revert ExceededMaxPhases();
         return phases[auditId][phase];
+    }
+
+    function getAllAuditPhases(uint256 auditId) external view returns (Phase[] memory) {
+        Phase[] memory auditPhases = new Phase[](audits[auditId].totalPhases);
+        for (uint256 i; i < audits[auditId].totalPhases; ++i) {
+            auditPhases[i] = phases[auditId][i];
+        }
+        return auditPhases;
     }
 }
