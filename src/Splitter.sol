@@ -35,8 +35,10 @@ contract Splitter is AccessControl {
 
     error LengthDoesNotMatchPhases();
     error TotalPhasesIsZero();
+    error ExceededMaxPhases();
+    error ZeroMaxPhases();
     error AddressZero();
-    error PhaseWithZeroPrice();
+    error AuditTotalPriceCantBeZero();
     error AuditInvalidClient();
     error AuditAlreadyAccepted();
     error AuditAlreadyFinished();
@@ -64,18 +66,20 @@ contract Splitter is AccessControl {
 
     bytes32 public constant COVERAGE_ROLE = keccak256("COVERAGE_ROLE");
     bytes32 public constant PROPOSER_ROLE = keccak256("PROPOSER_ROLE");
-    mapping(uint256 => Audit) public audits;
-    mapping(uint256 => mapping(uint256 => Phase)) public phases;
 
+    mapping(uint256 => Audit) private _audits;
+    mapping(uint256 => mapping(uint256 => Phase)) private _phases;
+    uint256 private _maxPhases;
     address private _coverage;
     uint256 private _auditId;
 
     /*//////////////////////////////////////////////////////////////////////////
                                     CONSTRUCTOR
     //////////////////////////////////////////////////////////////////////////*/
-    constructor() {
+    constructor(uint256 maxPhases) {
         _grantRole(COVERAGE_ROLE, msg.sender);
         _coverage = msg.sender;
+        _maxPhases = maxPhases;
     }
 
     /*//////////////////////////////////////////////////////////////////////////
@@ -92,6 +96,11 @@ contract Splitter is AccessControl {
         _revokeRole(PROPOSER_ROLE, proposer);
     }
 
+    function setMaxPhases(uint256 newMaxPhases) external onlyRole(COVERAGE_ROLE) {
+        if (newMaxPhases == 0) revert ZeroMaxPhases();
+        _maxPhases = newMaxPhases;
+    }
+
     /*//////////////////////////////////////////////////////////////////////////
                                     PUBLIC / EXTERNAL
     //////////////////////////////////////////////////////////////////////////*/
@@ -103,12 +112,16 @@ contract Splitter is AccessControl {
     {
         if (phasePrices.length != totalPhases) revert LengthDoesNotMatchPhases();
         if (totalPhases == 0) revert TotalPhasesIsZero();
+        if (totalPhases > _maxPhases) revert ExceededMaxPhases();
         if (client == address(0)) revert AddressZero();
         if (token == address(0)) revert AddressZero();
 
         _auditId += 1;
+
         uint256 totalPrice = _updatePhasePrices(_auditId, phasePrices, totalPhases);
-        audits[_auditId] = Audit(client, msg.sender, token, totalPrice, totalPhases, 0, false, false);
+        if (totalPrice == 0) revert AuditTotalPriceCantBeZero();
+
+        _audits[_auditId] = Audit(client, msg.sender, token, totalPrice, totalPhases, 0, false, false);
 
         emit AuditProposed(_auditId, client, msg.sender);
 
@@ -116,38 +129,38 @@ contract Splitter is AccessControl {
     }
 
     function acceptAudit(uint256 auditId) external {
-        Audit memory audit = audits[auditId];
+        Audit memory audit = _audits[auditId];
         if (audit.client != msg.sender) revert AuditInvalidClient();
         if (audit.accepted == true) revert AuditAlreadyAccepted();
 
-        audits[auditId].accepted = true;
+        _audits[auditId].accepted = true;
 
-        IERC20(audits[auditId].token).safeTransferFrom(audit.client, address(this), audit.price);
+        IERC20(_audits[auditId].token).safeTransferFrom(audit.client, address(this), audit.price);
 
         emit AuditAccepted(auditId, audit.client, audit.proposer);
     }
 
     function rejectAudit(uint256 auditId) external {
-        Audit memory audit = audits[auditId];
+        Audit memory audit = _audits[auditId];
         if (audit.client != msg.sender) revert AuditInvalidClient();
         if (audit.finished == true) revert AuditAlreadyFinished();
         if (audit.accepted == true) revert AuditAlreadyAccepted();
 
-        audits[auditId].finished = true;
+        _audits[auditId].finished = true;
 
         emit AuditRejected(auditId, audit.client, audit.proposer);
     }
 
     function cancelAudit(uint256 auditId) external {
-        Audit memory audit = audits[auditId];
+        Audit memory audit = _audits[auditId];
         if (audit.client != msg.sender) revert AuditInvalidClient();
         if (audit.accepted == false) revert AuditNotYetAccepted();
         if (audit.finished == true) revert AuditAlreadyFinished();
 
         uint256 amountToWithdraw = audit.price;
 
-        audits[auditId].finished = true;
-        audits[auditId].price = 0;
+        _audits[auditId].finished = true;
+        _audits[auditId].price = 0;
 
         IERC20(audit.token).safeTransfer(audit.client, amountToWithdraw);
 
@@ -155,8 +168,8 @@ contract Splitter is AccessControl {
     }
 
     function submitPhase(uint256 auditId) external onlyRole(PROPOSER_ROLE) {
-        Audit memory audit = audits[auditId];
-        Phase memory currPhase = phases[auditId][audit.currentPhase];
+        Audit memory audit = _audits[auditId];
+        Phase memory currPhase = _phases[auditId][audit.currentPhase];
         if (audit.proposer != msg.sender) revert AuditInvalidProposer();
         if (audit.finished == true) revert AuditAlreadyFinished();
         if (currPhase.submitted == true) revert PhaseAlreadySubmitted();
@@ -168,8 +181,8 @@ contract Splitter is AccessControl {
     }
 
     function approvePhase(uint256 auditId) external {
-        Audit storage audit = audits[auditId];
-        Phase storage phase = phases[auditId][audit.currentPhase];
+        Audit storage audit = _audits[auditId];
+        Phase storage phase = _phases[auditId][audit.currentPhase];
         if (audit.client != msg.sender) revert AuditInvalidClient();
         if (audit.finished == true) revert AuditAlreadyFinished();
         if (phase.submitted == false) revert PhaseNotYetSubmitted();
@@ -186,7 +199,9 @@ contract Splitter is AccessControl {
             emit AuditFinished(auditId, audit.client, audit.proposer);
         }
 
-        IERC20(audit.token).safeTransfer(_coverage, phase.price);
+        if (phase.price != 0) {
+            IERC20(audit.token).safeTransfer(_coverage, phase.price);
+        }
 
         emit PhaseApproved(auditId, approvedPhase, audit.client, audit.proposer);
     }
@@ -201,29 +216,32 @@ contract Splitter is AccessControl {
     {
         uint256 totalPrice;
         for (uint256 i; i < totalPhases; ++i) {
-            if (phasePrices[i] == 0) revert PhaseWithZeroPrice();
             totalPrice += phasePrices[i];
-            phases[auditId][i].price = phasePrices[i];
+            _phases[auditId][i].price = phasePrices[i];
         }
         return totalPrice;
     }
 
     /*//////////////////////////////////////////////////////////////////////////
-                                    GETTERS / SETTERS
+                                    GETTERS
     //////////////////////////////////////////////////////////////////////////*/
 
     function getAudit(uint256 auditId) external view returns (Audit memory) {
-        return audits[auditId];
+        return _audits[auditId];
     }
 
     function getAuditPhase(uint256 auditId, uint256 phase) external view returns (Phase memory) {
-        return phases[auditId][phase];
+        return _phases[auditId][phase];
+    }
+
+    function getMaxPhases() external view returns (uint256) {
+        return _maxPhases;
     }
 
     function getAllAuditPhases(uint256 auditId) external view returns (Phase[] memory) {
-        Phase[] memory auditPhases = new Phase[](audits[auditId].totalPhases);
-        for (uint256 i; i < audits[auditId].totalPhases; ++i) {
-            auditPhases[i] = phases[auditId][i];
+        Phase[] memory auditPhases = new Phase[](_audits[auditId].totalPhases);
+        for (uint256 i; i < _audits[auditId].totalPhases; ++i) {
+            auditPhases[i] = _phases[auditId][i];
         }
         return auditPhases;
     }
