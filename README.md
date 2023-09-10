@@ -5,7 +5,6 @@
 ## Usage
 
 ### Build
-
 ```shell
 $ forge build
 ```

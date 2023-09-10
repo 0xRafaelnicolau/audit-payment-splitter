@@ -18,7 +18,7 @@ contract Setup is Test {
     IUSDC public usdc = IUSDC(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
     address public deployer = address(100);
 
-    function setUp() public {
+    function setUp() public virtual {
         vm.label(deployer, "coverage");
         vm.label(address(usdc), "USDC");
 
