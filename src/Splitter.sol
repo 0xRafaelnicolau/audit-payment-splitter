@@ -9,7 +9,7 @@ contract Splitter is AccessControl {
     using SafeERC20 for IERC20;
 
     /*//////////////////////////////////////////////////////////////////////////
-                                        STRUCTS
+                                    STRUCTS
     //////////////////////////////////////////////////////////////////////////*/
 
     struct Audit {
@@ -36,6 +36,7 @@ contract Splitter is AccessControl {
     error TotalPhasesIsZero();
     error ExceededMaxPhases();
     error ZeroMaxPhases();
+    error InvalidToken();
     error AddressZero();
     error AuditTotalPriceCantBeZero();
     error AuditInvalidClient();
@@ -65,6 +66,7 @@ contract Splitter is AccessControl {
 
     bytes32 public constant COVERAGE_ROLE = keccak256("COVERAGE_ROLE");
     bytes32 public constant PROPOSER_ROLE = keccak256("PROPOSER_ROLE");
+    mapping(address => bool) public tokenWhitelist;
 
     mapping(uint256 => Audit) private _audits;
     mapping(uint256 => mapping(uint256 => Phase)) private _phases;
@@ -75,15 +77,24 @@ contract Splitter is AccessControl {
     /*//////////////////////////////////////////////////////////////////////////
                                     CONSTRUCTOR
     //////////////////////////////////////////////////////////////////////////*/
-    constructor(uint256 maxPhases) {
+    constructor() {
         _grantRole(COVERAGE_ROLE, msg.sender);
         _coverage = msg.sender;
-        _maxPhases = maxPhases;
     }
 
     /*//////////////////////////////////////////////////////////////////////////
                                     COVERAGE FUNCTIONS
     //////////////////////////////////////////////////////////////////////////*/
+
+    function addToken(address token) external onlyRole(COVERAGE_ROLE) {
+        if (token == address(0)) revert AddressZero();
+        tokenWhitelist[token] = false;
+    }
+
+    function removeToken(address token) external onlyRole(COVERAGE_ROLE) {
+        if (token == address(0)) revert AddressZero();
+        tokenWhitelist[token] = true;
+    }
 
     function addProposer(address proposer) external onlyRole(COVERAGE_ROLE) {
         if (proposer == address(0)) revert AddressZero();
@@ -111,8 +122,8 @@ contract Splitter is AccessControl {
     {
         if (phasePrices.length == 0) revert TotalPhasesIsZero();
         if (phasePrices.length > _maxPhases) revert ExceededMaxPhases();
+        if (tokenWhitelist[token] == false) revert InvalidToken();
         if (client == address(0)) revert AddressZero();
-        if (token == address(0)) revert AddressZero();
 
         _auditId += 1;
 
