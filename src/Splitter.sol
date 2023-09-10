@@ -33,7 +33,6 @@ contract Splitter is AccessControl {
                                     ERRORS
     //////////////////////////////////////////////////////////////////////////*/
 
-    error LengthDoesNotMatchPhases();
     error TotalPhasesIsZero();
     error ExceededMaxPhases();
     error ZeroMaxPhases();
@@ -105,23 +104,22 @@ contract Splitter is AccessControl {
                                     PUBLIC / EXTERNAL
     //////////////////////////////////////////////////////////////////////////*/
 
-    function proposeAudit(address client, address token, uint256[] calldata phasePrices, uint256 totalPhases)
+    function proposeAudit(address client, address token, uint256[] calldata phasePrices)
         external
         onlyRole(PROPOSER_ROLE)
         returns (uint256)
     {
-        if (phasePrices.length != totalPhases) revert LengthDoesNotMatchPhases();
-        if (totalPhases == 0) revert TotalPhasesIsZero();
-        if (totalPhases > _maxPhases) revert ExceededMaxPhases();
+        if (phasePrices.length == 0) revert TotalPhasesIsZero();
+        if (phasePrices.length > _maxPhases) revert ExceededMaxPhases();
         if (client == address(0)) revert AddressZero();
         if (token == address(0)) revert AddressZero();
 
         _auditId += 1;
 
-        uint256 totalPrice = _updatePhasePrices(_auditId, phasePrices, totalPhases);
+        uint256 totalPrice = _updatePhasePrices(_auditId, phasePrices, phasePrices.length);
         if (totalPrice == 0) revert AuditTotalPriceCantBeZero();
 
-        _audits[_auditId] = Audit(client, msg.sender, token, totalPrice, totalPhases, 0, false, false);
+        _audits[_auditId] = Audit(client, msg.sender, token, totalPrice, phasePrices.length, 0, false, false);
 
         emit AuditProposed(_auditId, client, msg.sender);
 
