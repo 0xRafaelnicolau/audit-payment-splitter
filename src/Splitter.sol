@@ -120,9 +120,9 @@ contract Splitter is AccessControl {
         onlyRole(PROPOSER_ROLE)
         returns (uint256)
     {
+        if (!tokenWhitelist[token]) revert InvalidToken();
         if (phasePrices.length == 0) revert TotalPhasesIsZero();
         if (phasePrices.length > _maxPhases) revert ExceededMaxPhases();
-        if (tokenWhitelist[token] == false) revert InvalidToken();
         if (client == address(0)) revert AddressZero();
 
         _auditId += 1;
@@ -140,7 +140,7 @@ contract Splitter is AccessControl {
     function acceptAudit(uint256 auditId) external {
         Audit memory audit = _audits[auditId];
         if (audit.client != msg.sender) revert AuditInvalidClient();
-        if (audit.accepted == true) revert AuditAlreadyAccepted();
+        if (audit.accepted) revert AuditAlreadyAccepted();
 
         _audits[auditId].accepted = true;
 
@@ -152,8 +152,8 @@ contract Splitter is AccessControl {
     function rejectAudit(uint256 auditId) external {
         Audit memory audit = _audits[auditId];
         if (audit.client != msg.sender) revert AuditInvalidClient();
-        if (audit.finished == true) revert AuditAlreadyFinished();
-        if (audit.accepted == true) revert AuditAlreadyAccepted();
+        if (audit.finished) revert AuditAlreadyFinished();
+        if (audit.accepted) revert AuditAlreadyAccepted();
 
         _audits[auditId].finished = true;
 
@@ -163,8 +163,8 @@ contract Splitter is AccessControl {
     function cancelAudit(uint256 auditId) external {
         Audit memory audit = _audits[auditId];
         if (audit.client != msg.sender) revert AuditInvalidClient();
-        if (audit.accepted == false) revert AuditNotYetAccepted();
-        if (audit.finished == true) revert AuditAlreadyFinished();
+        if (!audit.accepted) revert AuditNotYetAccepted();
+        if (audit.finished) revert AuditAlreadyFinished();
 
         uint256 amountToWithdraw = audit.price;
 
@@ -180,9 +180,9 @@ contract Splitter is AccessControl {
         Audit memory audit = _audits[auditId];
         Phase memory currPhase = _phases[auditId][audit.currentPhase];
         if (audit.proposer != msg.sender) revert AuditInvalidProposer();
-        if (audit.finished == true) revert AuditAlreadyFinished();
-        if (currPhase.submitted == true) revert PhaseAlreadySubmitted();
-        if (currPhase.confirmed == true) revert PhaseAlreadyConfirmed();
+        if (audit.finished) revert AuditAlreadyFinished();
+        if (currPhase.submitted) revert PhaseAlreadySubmitted();
+        if (currPhase.confirmed) revert PhaseAlreadyConfirmed();
 
         currPhase.submitted = true;
 
@@ -193,9 +193,9 @@ contract Splitter is AccessControl {
         Audit storage audit = _audits[auditId];
         Phase storage phase = _phases[auditId][audit.currentPhase];
         if (audit.client != msg.sender) revert AuditInvalidClient();
-        if (audit.finished == true) revert AuditAlreadyFinished();
-        if (phase.submitted == false) revert PhaseNotYetSubmitted();
-        if (phase.confirmed == true) revert PhaseAlreadyConfirmed();
+        if (audit.finished) revert AuditAlreadyFinished();
+        if (!phase.submitted) revert PhaseNotYetSubmitted();
+        if (phase.confirmed) revert PhaseAlreadyConfirmed();
 
         uint256 approvedPhase = audit.currentPhase;
 
