@@ -25,7 +25,10 @@ contract Setup is Test {
         vm.prank(usdc.masterMinter());
         usdc.configureMinter(deployer, type(uint256).max);
 
-        vm.prank(deployer);
-        splitter = new Splitter(10);
+        vm.startPrank(deployer);
+        splitter = new Splitter();
+        splitter.setMaxPhases(10);
+        splitter.addToken(address(usdc));
+        vm.stopPrank();
     }
 }

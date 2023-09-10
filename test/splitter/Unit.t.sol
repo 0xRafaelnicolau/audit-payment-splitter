@@ -92,13 +92,22 @@ contract Unit is Setup {
 
     function testProposeAuditInvalidProposer() public {
         address invalidProposer = address(400);
-
         uint256[] memory prices = new uint[](0);
 
         vm.startPrank(invalidProposer);
         vm.expectRevert(); // TODO: test for the specific error.
         vm.stopPrank();
         splitter.proposeAudit(client, address(usdc), prices);
+    }
+
+    function testProposeAuditInvalidToken() public {
+        address invalidToken = address(500);
+        uint256[] memory prices = new uint[](0);
+
+        vm.startPrank(proposer);
+        vm.expectRevert();
+        splitter.proposeAudit(client, invalidToken, prices);
+        vm.stopPrank();
     }
 
     /*//////////////////////////////////////////////////////////////////////////
