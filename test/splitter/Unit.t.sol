@@ -20,6 +20,10 @@ contract Unit is Setup {
         vm.stopPrank();
     }
 
+    /*//////////////////////////////////////////////////////////////////////////
+                                    PROPOSE AUDIT
+    //////////////////////////////////////////////////////////////////////////*/
+
     function testProposeAudit() public {
         uint256[] memory prices = new uint256[](5);
         prices[0] = 30000e6;
@@ -95,5 +99,43 @@ contract Unit is Setup {
         vm.expectRevert(); // TODO: test for the specific error.
         vm.stopPrank();
         splitter.proposeAudit(client, address(usdc), prices);
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+                                    ACCEPT AUDIT
+    //////////////////////////////////////////////////////////////////////////*/
+
+    function testAcceptAudit() public {
+        testProposeAudit();
+
+        vm.startPrank(client);
+        usdc.approve(address(splitter), 50000e6);
+        splitter.acceptAudit(1);
+        vm.stopPrank();
+
+        Splitter.Audit memory audit = splitter.getAudit(1);
+        assertEq(audit.accepted, true);
+        assertEq(usdc.balanceOf(client), 0);
+        assertEq(usdc.balanceOf(address(splitter)), 50000e6);
+    }
+
+    function testAcceptAuditInvalidClient() public {
+        testProposeAudit();
+
+        address invalidClient = address(400);
+
+        vm.startPrank(invalidClient);
+        vm.expectRevert(Splitter.AuditInvalidClient.selector);
+        splitter.acceptAudit(1);
+        vm.stopPrank();
+    }
+
+    function testAcceptAuditTwice() public {
+        testAcceptAudit();
+
+        vm.startPrank(client);
+        vm.expectRevert(Splitter.AuditAlreadyAccepted.selector);
+        splitter.acceptAudit(1);
+        vm.stopPrank();
     }
 }
