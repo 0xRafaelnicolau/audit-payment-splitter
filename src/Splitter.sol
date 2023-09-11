@@ -141,6 +141,7 @@ contract Splitter is AccessControl {
         Audit memory audit = _audits[auditId];
         if (audit.client != msg.sender) revert AuditInvalidClient();
         if (audit.accepted) revert AuditAlreadyAccepted();
+        if (audit.finished) revert AuditAlreadyFinished();
 
         _audits[auditId].accepted = true;
 
