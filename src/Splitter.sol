@@ -164,8 +164,8 @@ contract Splitter is AccessControl {
     function cancelAudit(uint256 auditId) external {
         Audit memory audit = _audits[auditId];
         if (audit.client != msg.sender) revert AuditInvalidClient();
-        if (!audit.accepted) revert AuditNotYetAccepted();
         if (audit.finished) revert AuditAlreadyFinished();
+        if (!audit.accepted) revert AuditNotYetAccepted();
 
         uint256 amountToWithdraw = audit.price;
 
@@ -183,7 +183,6 @@ contract Splitter is AccessControl {
         if (audit.proposer != msg.sender) revert AuditInvalidProposer();
         if (audit.finished) revert AuditAlreadyFinished();
         if (currPhase.submitted) revert PhaseAlreadySubmitted();
-        if (currPhase.confirmed) revert PhaseAlreadyConfirmed();
 
         _phases[auditId][audit.currentPhase].submitted = true;
 
