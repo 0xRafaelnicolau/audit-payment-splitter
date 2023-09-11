@@ -88,12 +88,12 @@ contract Splitter is AccessControl {
 
     function addToken(address token) external onlyRole(COVERAGE_ROLE) {
         if (token == address(0)) revert AddressZero();
-        tokenWhitelist[token] = false;
+        tokenWhitelist[token] = true;
     }
 
     function removeToken(address token) external onlyRole(COVERAGE_ROLE) {
         if (token == address(0)) revert AddressZero();
-        tokenWhitelist[token] = true;
+        tokenWhitelist[token] = false;
     }
 
     function addProposer(address proposer) external onlyRole(COVERAGE_ROLE) {
