@@ -184,7 +184,7 @@ contract Splitter is AccessControl {
         if (currPhase.submitted) revert PhaseAlreadySubmitted();
         if (currPhase.confirmed) revert PhaseAlreadyConfirmed();
 
-        currPhase.submitted = true;
+        _phases[auditId][audit.currentPhase].submitted = true;
 
         emit PhaseSubmitted(auditId, audit.currentPhase, audit.client, audit.proposer);
     }
@@ -235,6 +235,10 @@ contract Splitter is AccessControl {
                                     GETTERS
     //////////////////////////////////////////////////////////////////////////*/
 
+    function getMaxPhases() external view returns (uint256) {
+        return _maxPhases;
+    }
+
     function getAudit(uint256 auditId) external view returns (Audit memory) {
         return _audits[auditId];
     }
@@ -243,8 +247,9 @@ contract Splitter is AccessControl {
         return _phases[auditId][phase];
     }
 
-    function getMaxPhases() external view returns (uint256) {
-        return _maxPhases;
+    function getAuditCurrentPhase(uint256 auditId) external view returns (Phase memory) {
+        Audit memory audit = _audits[auditId];
+        return _phases[auditId][audit.currentPhase];
     }
 
     function getAllAuditPhases(uint256 auditId) external view returns (Phase[] memory) {
