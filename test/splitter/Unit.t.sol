@@ -32,7 +32,7 @@ contract Unit is Setup {
         prices[3] = 5000e6;
         prices[4] = 5000e6;
 
-        vm.startPrank(proposer);
+        vm.prank(proposer);
         uint256 id = splitter.proposeAudit(client, address(usdc), prices);
 
         Splitter.Audit memory audit = splitter.getAudit(id);
@@ -54,7 +54,7 @@ contract Unit is Setup {
         prices[3] = 0;
         prices[4] = 10000e6;
 
-        vm.startPrank(proposer);
+        vm.prank(proposer);
         uint256 id = splitter.proposeAudit(client, address(usdc), prices);
 
         Splitter.Phase[] memory phases = splitter.getAllAuditPhases(id);
@@ -145,6 +145,38 @@ contract Unit is Setup {
         vm.startPrank(client);
         vm.expectRevert(Splitter.AuditAlreadyAccepted.selector);
         splitter.acceptAudit(1);
+        vm.stopPrank();
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+                                    REJECT AUDIT
+    //////////////////////////////////////////////////////////////////////////*/
+
+    function testRejectAudit() public {
+        testProposeAudit();
+
+        vm.prank(client);
+        splitter.rejectAudit(1);
+
+        Splitter.Audit memory audit = splitter.getAudit(1);
+        assertEq(audit.finished, true);
+    }
+
+    function testRejectFinishedAudit() public {
+        testRejectAudit();
+
+        vm.startPrank(client);
+        vm.expectRevert(Splitter.AuditAlreadyFinished.selector);
+        splitter.rejectAudit(1);
+        vm.stopPrank();
+    }
+
+    function testRejectAcceptedAudit() public {
+        testAcceptAudit();
+
+        vm.startPrank(client);
+        vm.expectRevert(Splitter.AuditAlreadyAccepted.selector);
+        splitter.rejectAudit(1);
         vm.stopPrank();
     }
 }
